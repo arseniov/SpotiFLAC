@@ -1049,3 +1049,102 @@ func (a *App) CheckFilesExistence(outputDir string, tracks []CheckFileExistenceR
 func (a *App) SkipDownloadItem(itemID, filePath string) {
 	backend.SkipDownloadItem(itemID, filePath)
 }
+
+type DownloadAlbumRequest struct {
+	AlbumURL             string `json:"album_url"`
+	Service              string `json:"service"`
+	AudioFormat          string `json:"audio_format"`
+	EmbedLyrics          bool   `json:"embed_lyrics"`
+	EmbedMaxQualityCover bool   `json:"embed_max_quality_cover"`
+	OutputDir            string `json:"output_dir"`
+}
+
+type DownloadAlbumResponse struct {
+	AlbumName string             `json:"album_name"`
+	Tracks    []DownloadResponse `json:"tracks"`
+}
+
+func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	metadata, err := backend.GetFilteredSpotifyData(ctx, req.AlbumURL, true, 0)
+	if err != nil {
+		return DownloadAlbumResponse{}, err
+	}
+
+	metadataMap, ok := metadata.(map[string]interface{})
+	if !ok {
+		return DownloadAlbumResponse{}, fmt.Errorf("invalid metadata format")
+	}
+
+	tracks, ok := metadataMap["tracks"]
+	if !ok {
+		return DownloadAlbumResponse{}, fmt.Errorf("no tracks found in album")
+	}
+
+	albumName := "Unknown Album"
+	if album, ok := metadataMap["album"].(map[string]interface{}); ok {
+		if name, ok := album["name"].(string); ok {
+			albumName = name
+		}
+	}
+
+	albumDir := filepath.Join(req.OutputDir, backend.SanitizeFilename(albumName))
+
+	responses := []DownloadResponse{}
+
+	tracksSlice, ok := tracks.([]interface{})
+	if !ok {
+		return DownloadAlbumResponse{}, fmt.Errorf("tracks is not a slice")
+	}
+
+	for _, trackData := range tracksSlice {
+		track, ok := trackData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		trackReq := DownloadRequest{
+			ISRC:                 getString(track, "isrc"),
+			Service:              req.Service,
+			AudioFormat:          req.AudioFormat,
+			TrackName:            getString(track, "name"),
+			ArtistName:           getStringFromArtists(track),
+			AlbumName:            albumName,
+			OutputDir:            albumDir,
+			EmbedLyrics:          req.EmbedLyrics,
+			EmbedMaxQualityCover: req.EmbedMaxQualityCover,
+			SpotifyID:            getString(track, "spotify_id"),
+		}
+
+		resp, err := a.DownloadTrack(trackReq)
+		responses = append(responses, resp)
+		if err != nil {
+			// log error but continue
+		}
+	}
+
+	return DownloadAlbumResponse{
+		AlbumName: albumName,
+		Tracks:    responses,
+	}, nil
+}
+
+func getString(m map[string]interface{}, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
+func getStringFromArtists(track map[string]interface{}) string {
+	if artists, ok := track["artists"].([]interface{}); ok && len(artists) > 0 {
+		if artist, ok := artists[0].(map[string]interface{}); ok {
+			return getString(artist, "name")
+		}
+	}
+	return "Unknown Artist"
+}
