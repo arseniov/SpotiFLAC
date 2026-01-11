@@ -1073,53 +1073,32 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 		return DownloadAlbumResponse{}, err
 	}
 
-	metadataMap, ok := metadata.(map[string]interface{})
+	resp, ok := metadata.(*backend.AlbumResponsePayload)
 	if !ok {
-		return DownloadAlbumResponse{}, fmt.Errorf("invalid metadata format")
+		return DownloadAlbumResponse{}, fmt.Errorf("not an album response")
 	}
 
-	tracks, ok := metadataMap["tracks"]
-	if !ok {
-		return DownloadAlbumResponse{}, fmt.Errorf("no tracks found in album")
-	}
-
-	albumName := "Unknown Album"
-	if album, ok := metadataMap["album"].(map[string]interface{}); ok {
-		if name, ok := album["name"].(string); ok {
-			albumName = name
-		}
-	}
-
-	albumDir := filepath.Join(req.OutputDir, backend.SanitizeFilename(albumName))
+	albumName := resp.AlbumInfo.Name
+	albumDir := filepath.Join(req.OutputDir, strings.ReplaceAll(albumName, "/", "_"))
 
 	responses := []DownloadResponse{}
 
-	tracksSlice, ok := tracks.([]interface{})
-	if !ok {
-		return DownloadAlbumResponse{}, fmt.Errorf("tracks is not a slice")
-	}
-
-	for _, trackData := range tracksSlice {
-		track, ok := trackData.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
+	for _, track := range resp.TrackList {
 		trackReq := DownloadRequest{
-			ISRC:                 getString(track, "isrc"),
+			ISRC:                 track.ISRC,
 			Service:              req.Service,
 			AudioFormat:          req.AudioFormat,
-			TrackName:            getString(track, "name"),
-			ArtistName:           getStringFromArtists(track),
+			TrackName:            track.Name,
+			ArtistName:           track.Artists,
 			AlbumName:            albumName,
 			OutputDir:            albumDir,
 			EmbedLyrics:          req.EmbedLyrics,
 			EmbedMaxQualityCover: req.EmbedMaxQualityCover,
-			SpotifyID:            getString(track, "spotify_id"),
+			SpotifyID:            track.SpotifyID,
 		}
 
-		resp, err := a.DownloadTrack(trackReq)
-		responses = append(responses, resp)
+		downloadResp, err := a.DownloadTrack(trackReq)
+		responses = append(responses, downloadResp)
 		if err != nil {
 			// log error but continue
 		}
@@ -1131,20 +1110,4 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 	}, nil
 }
 
-func getString(m map[string]interface{}, key string) string {
-	if v, ok := m[key]; ok {
-		if s, ok := v.(string); ok {
-			return s
-		}
-	}
-	return ""
-}
 
-func getStringFromArtists(track map[string]interface{}) string {
-	if artists, ok := track["artists"].([]interface{}); ok && len(artists) > 0 {
-		if artist, ok := artists[0].(map[string]interface{}); ok {
-			return getString(artist, "name")
-		}
-	}
-	return "Unknown Artist"
-}
