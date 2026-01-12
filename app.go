@@ -9,11 +9,23 @@ import (
 	"path/filepath"
 	"spotiflac/backend"
 	"strings"
+	"sync"
 	"time"
 )
 
 type App struct {
-	ctx context.Context
+	ctx         context.Context
+	downloads   map[string]*DownloadStatus
+	downloadsMu sync.RWMutex
+}
+
+type DownloadStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Status    string `json:"status"`
+	Progress  int    `json:"progress"`
+	Completed bool   `json:"completed"`
 }
 
 func NewApp() *App {
@@ -60,6 +72,7 @@ type DownloadRequest struct {
 	SpotifyTotalDiscs    int    `json:"spotify_total_discs,omitempty"`
 	Copyright            string `json:"copyright,omitempty"`
 	Publisher            string `json:"publisher,omitempty"`
+	IsSingleTrack        bool   `json:"is_single_track,omitempty"`
 }
 
 type DownloadResponse struct {
@@ -69,6 +82,21 @@ type DownloadResponse struct {
 	Error         string `json:"error,omitempty"`
 	AlreadyExists bool   `json:"already_exists,omitempty"`
 	ItemID        string `json:"item_id,omitempty"`
+}
+
+type DownloadAlbumRequest struct {
+	AlbumURL             string `json:"album_url"`
+	Service              string `json:"service"`
+	AudioFormat          string `json:"audio_format"`
+	EmbedLyrics          bool   `json:"embed_lyrics"`
+	EmbedMaxQualityCover bool   `json:"embed_max_quality_cover"`
+	OutputDir            string `json:"output_dir"`
+}
+
+type DownloadAlbumResponse struct {
+	AlbumName     string             `json:"album_name"`
+	Tracks        []DownloadResponse `json:"tracks"`
+	ExpectedFiles []string           `json:"expected_files"`
 }
 
 func (a *App) GetStreamingURLs(spotifyTrackID string) (string, error) {
@@ -192,7 +220,15 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 	var err error
 	var filename string
 
-	if req.FilenameFormat == "" {
+	if req.IsSingleTrack {
+		year := strings.Split(req.ReleaseDate, "-")[0]
+		albumDir := filepath.Join(req.OutputDir, fmt.Sprintf("%s - %s (%s)", req.ArtistName, req.TrackName, year))
+		os.MkdirAll(albumDir, 0755)
+		req.OutputDir = albumDir
+		req.FilenameFormat = "track_number. artist - title"
+		req.TrackNumber = true
+		req.Position = 1
+	} else if req.FilenameFormat == "" {
 		req.FilenameFormat = "title-artist"
 	}
 
@@ -1044,6 +1080,118 @@ func (a *App) CheckFilesExistence(outputDir string, tracks []CheckFileExistenceR
 	}
 
 	return results
+}
+
+func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	metadata, err := backend.GetFilteredSpotifyData(ctx, req.AlbumURL, true, 0)
+	if err != nil {
+		return DownloadAlbumResponse{}, err
+	}
+
+	resp, ok := metadata.(*backend.AlbumResponsePayload)
+	if !ok {
+		return DownloadAlbumResponse{}, fmt.Errorf("not an album response")
+	}
+
+	albumName := resp.AlbumInfo.Name
+	year := strings.Split(resp.AlbumInfo.ReleaseDate, "-")[0]
+	albumDir := filepath.Join(req.OutputDir, fmt.Sprintf("%s - %s (%s)", resp.AlbumInfo.Artists, albumName, year))
+
+	expectedFiles := []string{}
+
+	for _, track := range resp.TrackList {
+		trackReq := DownloadRequest{
+			ISRC:                 track.ISRC,
+			Service:              req.Service,
+			AudioFormat:          req.AudioFormat,
+			TrackName:            track.Name,
+			ArtistName:           track.Artists,
+			AlbumName:            albumName,
+			OutputDir:            albumDir,
+			EmbedLyrics:          req.EmbedLyrics,
+			EmbedMaxQualityCover: req.EmbedMaxQualityCover,
+			SpotifyID:            track.SpotifyID,
+			FilenameFormat:       "track_number. artist - title",
+			TrackNumber:          true,
+			Position:             track.TrackNumber,
+		}
+
+		// Assume filename format
+		expectedFilename := backend.BuildExpectedFilename(track.Name, track.Artists, albumName, track.Artists, "", "track_number. artist - title", true, track.TrackNumber, 0, false)
+		expectedFile := filepath.Join(albumDir, expectedFilename+".flac")
+		expectedFiles = append(expectedFiles, expectedFile)
+
+		// Start download in goroutine
+		go func(tr DownloadRequest, trackID string) {
+			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 20*time.Minute)
+			defer timeoutCancel()
+			_, err := a.DownloadTrack(tr)
+			if err != nil {
+				a.completeDownload(trackID) // mark as completed even on error
+			} else {
+				a.completeDownload(trackID)
+			}
+		}(trackReq, fmt.Sprintf("%s_track_%s", albumName, track.SpotifyID))
+	}
+
+	return DownloadAlbumResponse{
+		AlbumName:     albumName,
+		Tracks:        []DownloadResponse{}, // Empty, will be checked by frontend
+		ExpectedFiles: expectedFiles,
+	}, nil
+}
+
+func (a *App) addDownload(id, name, downloadType string) {
+	a.downloadsMu.Lock()
+	defer a.downloadsMu.Unlock()
+	a.downloads[id] = &DownloadStatus{
+		ID:        id,
+		Name:      name,
+		Type:      downloadType,
+		Status:    "Starting",
+		Progress:  0,
+		Completed: false,
+	}
+	a.saveDownloadsStatus()
+}
+
+func (a *App) updateDownloadProgress(id string, progress int) {
+	a.downloadsMu.Lock()
+	defer a.downloadsMu.Unlock()
+	if d, exists := a.downloads[id]; exists {
+		d.Progress = progress
+		d.Status = "Downloading"
+		a.saveDownloadsStatus()
+	}
+}
+
+func (a *App) completeDownload(id string) {
+	a.downloadsMu.Lock()
+	defer a.downloadsMu.Unlock()
+	if d, exists := a.downloads[id]; exists {
+		d.Progress = 100
+		d.Status = "Completed"
+		d.Completed = true
+		a.saveDownloadsStatus()
+	}
+}
+
+func (a *App) saveDownloadsStatus() {
+	data := map[string]interface{}{
+		"downloads": a.downloads,
+	}
+	file, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		fmt.Printf("Error marshaling downloads status: %v\n", err)
+		return
+	}
+	err = os.WriteFile("/downloads/status.json", file, 0644)
+	if err != nil {
+		fmt.Printf("Error writing downloads status: %v\n", err)
+	}
 }
 
 func (a *App) SkipDownloadItem(itemID, filePath string) {
