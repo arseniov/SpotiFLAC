@@ -1060,8 +1060,9 @@ type DownloadAlbumRequest struct {
 }
 
 type DownloadAlbumResponse struct {
-	AlbumName string             `json:"album_name"`
-	Tracks    []DownloadResponse `json:"tracks"`
+	AlbumName     string             `json:"album_name"`
+	Tracks        []DownloadResponse `json:"tracks"`
+	ExpectedFiles []string           `json:"expected_files"`
 }
 
 func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, error) {
@@ -1081,7 +1082,7 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 	albumName := resp.AlbumInfo.Name
 	albumDir := filepath.Join(req.OutputDir, strings.ReplaceAll(albumName, "/", "_"))
 
-	responses := []DownloadResponse{}
+	expectedFiles := []string{}
 
 	for _, track := range resp.TrackList {
 		trackReq := DownloadRequest{
@@ -1097,16 +1098,23 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 			SpotifyID:            track.SpotifyID,
 		}
 
-		downloadResp, err := a.DownloadTrack(trackReq)
-		responses = append(responses, downloadResp)
-		if err != nil {
-			// log error but continue
-		}
+		// Assume filename format
+		expectedFilename := backend.BuildExpectedFilename(track.Name, track.Artists, albumName, track.Artists, "", "title-artist", false, 0, 0, false)
+		expectedFile := filepath.Join(albumDir, expectedFilename+".flac")
+		expectedFiles = append(expectedFiles, expectedFile)
+
+		// Start download in goroutine
+		go func(tr DownloadRequest) {
+			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 20*time.Minute)
+			defer timeoutCancel()
+			a.DownloadTrack(tr)
+		}(trackReq)
 	}
 
 	return DownloadAlbumResponse{
 		AlbumName: albumName,
-		Tracks:    responses,
+		Tracks:    []DownloadResponse{}, // Empty, will be checked by frontend
+		ExpectedFiles: expectedFiles,
 	}, nil
 }
 
