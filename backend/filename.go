@@ -51,7 +51,7 @@ func BuildExpectedFilename(trackName, artistName, albumName, albumArtist, releas
 		case "artist-title":
 			filename = fmt.Sprintf("%s - %s", safeArtist, safeTitle)
 		case "track_number. artist - title":
-			filename = fmt.Sprintf("%s - %s", safeArtist, safeTitle)
+			filename = fmt.Sprintf("%s - %s", safeTitle, safeArtist)
 		case "title":
 			filename = safeTitle
 		default:
