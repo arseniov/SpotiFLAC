@@ -221,8 +221,11 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 	var filename string
 
 	if req.IsSingleTrack {
-		year := strings.Split(req.ReleaseDate, "-")[0]
-		albumDir := filepath.Join(req.OutputDir, fmt.Sprintf("%s - %s (%s)", req.ArtistName, req.TrackName, year))
+		var year string
+		if req.ReleaseDate != "" {
+			year = " (" + strings.Split(req.ReleaseDate, "-")[0] + ")"
+		}
+		albumDir := filepath.Join(req.OutputDir, req.ArtistName+" - "+req.TrackName+year)
 		os.MkdirAll(albumDir, 0755)
 		req.OutputDir = albumDir
 		req.FilenameFormat = "track_number. artist - title"
