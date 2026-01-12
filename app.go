@@ -1045,11 +1045,6 @@ func (a *App) CheckFilesExistence(outputDir string, tracks []CheckFileExistenceR
 				trackNumber = t.TrackNumber
 			}
 
-			fileExt := ".flac"
-			if t.AudioFormat == "mp3" {
-				fileExt = ".mp3"
-			}
-
 			expectedFilenameBase := backend.BuildExpectedFilename(
 				t.TrackName,
 				t.ArtistName,
