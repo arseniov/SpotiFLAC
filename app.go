@@ -1063,7 +1063,7 @@ func (a *App) CheckFilesExistence(outputDir string, tracks []CheckFileExistenceR
 				t.UseAlbumTrackNumber,
 			)
 
-			expectedFilename := strings.TrimSuffix(expectedFilenameBase, ".flac") + fileExt
+			expectedFilename := expectedFilenameBase
 
 			expectedPath := filepath.Join(outputDir, expectedFilename)
 
@@ -1124,7 +1124,7 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 
 		// Assume filename format
 		expectedFilename := backend.BuildExpectedFilename(track.Name, track.Artists, albumName, track.Artists, "", "track_number. artist - title", true, track.TrackNumber, 0, false)
-		expectedFile := filepath.Join(albumDir, expectedFilename+".flac")
+		expectedFile := filepath.Join(albumDir, expectedFilename)
 		expectedFiles = append(expectedFiles, expectedFile)
 
 		// Start download in goroutine
