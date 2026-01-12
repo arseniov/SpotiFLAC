@@ -232,7 +232,7 @@ func (a *App) DownloadTrack(req DownloadRequest) (DownloadResponse, error) {
 		req.TrackNumber = true
 		req.Position = 1
 	} else if req.FilenameFormat == "" {
-		req.FilenameFormat = "title-artist"
+		req.FilenameFormat = "track_number. artist - title"
 	}
 
 	itemID := req.ItemID
