@@ -1126,8 +1126,6 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 
 		// Start download in goroutine
 		go func(tr DownloadRequest, trackID string) {
-			timeoutCtx, timeoutCancel := context.WithTimeout(context.Background(), 20*time.Minute)
-			defer timeoutCancel()
 			_, err := a.DownloadTrack(tr)
 			if err != nil {
 				a.completeDownload(trackID) // mark as completed even on error
