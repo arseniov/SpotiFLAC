@@ -1184,7 +1184,7 @@ func (a *App) saveDownloadsStatus() {
 		fmt.Printf("Error marshaling downloads status: %v\n", err)
 		return
 	}
-	err = os.WriteFile("/downloads/status.json", file, 0644)
+	err = os.WriteFile("/app/data/status.json", file, 0644)
 	if err != nil {
 		fmt.Printf("Error writing downloads status: %v\n", err)
 	}
@@ -1193,7 +1193,3 @@ func (a *App) saveDownloadsStatus() {
 func (a *App) SkipDownloadItem(itemID, filePath string) {
 	backend.SkipDownloadItem(itemID, filePath)
 }
-
-
-
-
