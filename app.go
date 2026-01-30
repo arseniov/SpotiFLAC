@@ -1107,6 +1107,7 @@ func (a *App) DownloadAlbum(req DownloadAlbumRequest) (DownloadAlbumResponse, er
 			AudioFormat:          req.AudioFormat,
 			TrackName:            track.Name,
 			ArtistName:           track.Artists,
+			AlbumArtist:          track.AlbumArtist,
 			AlbumName:            albumName,
 			OutputDir:            albumDir,
 			EmbedLyrics:          req.EmbedLyrics,

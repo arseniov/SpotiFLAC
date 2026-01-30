@@ -467,7 +467,7 @@ func (a *AmazonDownloader) DownloadByURL(amazonURL, outputDir, filenameFormat st
 
 	metadata := Metadata{
 		Title:       spotifyTrackName,
-		Artist:      spotifyArtistName,
+		Artist:      spotifyAlbumArtist,
 		Album:       spotifyAlbumName,
 		AlbumArtist: spotifyAlbumArtist,
 		Date:        spotifyReleaseDate,

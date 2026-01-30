@@ -601,7 +601,7 @@ func (t *TidalDownloader) DownloadByURL(tidalURL, outputDir, quality, filenameFo
 
 	metadata := Metadata{
 		Title:       trackTitle,
-		Artist:      artistName,
+		Artist:      spotifyAlbumArtist,
 		Album:       albumTitle,
 		AlbumArtist: spotifyAlbumArtist,
 		Date:        spotifyReleaseDate,
@@ -705,7 +705,7 @@ func (t *TidalDownloader) DownloadByURLWithFallback(tidalURL, outputDir, quality
 
 	metadata := Metadata{
 		Title:       trackTitle,
-		Artist:      artistName,
+		Artist:      spotifyAlbumArtist,
 		Album:       albumTitle,
 		AlbumArtist: spotifyAlbumArtist,
 		Date:        spotifyReleaseDate,

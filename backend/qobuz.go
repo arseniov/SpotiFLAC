@@ -397,7 +397,7 @@ func (q *QobuzDownloader) DownloadByISRC(deezerISRC, outputDir, quality, filenam
 
 	metadata := Metadata{
 		Title:       trackTitle,
-		Artist:      artists,
+		Artist:      spotifyAlbumArtist,
 		Album:       albumTitle,
 		AlbumArtist: spotifyAlbumArtist,
 		Date:        spotifyReleaseDate,
