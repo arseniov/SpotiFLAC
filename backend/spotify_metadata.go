@@ -1696,6 +1696,10 @@ func (c *SpotifyMetadataClient) SearchByType(ctx context.Context, query string, 
 		}
 	case "album":
 		for _, item := range apiResp.Results.Albums {
+			trackCount, err := c.GetAlbumTrackCount(ctx, item.ID)
+			if err != nil {
+				trackCount = 0
+			}
 			results = append(results, SearchResult{
 				ID:          item.ID,
 				Name:        item.Name,
@@ -1704,6 +1708,7 @@ func (c *SpotifyMetadataClient) SearchByType(ctx context.Context, query string, 
 				Images:      item.Cover,
 				ReleaseDate: fmt.Sprintf("%d", item.Year),
 				ExternalURL: fmt.Sprintf("https://open.spotify.com/album/%s", item.ID),
+				TotalTracks: trackCount,
 			})
 		}
 	case "artist":
@@ -1771,4 +1776,48 @@ func GetPreviewURL(trackID string) (string, error) {
 	}
 
 	return match, nil
+}
+
+func (c *SpotifyMetadataClient) GetAlbumTrackCount(ctx context.Context, albumID string) (int, error) {
+	client := NewSpotifyClient()
+	if err := client.Initialize(); err != nil {
+		return 0, fmt.Errorf("failed to initialize spotify client: %w", err)
+	}
+
+	payload := map[string]interface{}{
+		"variables": map[string]interface{}{
+			"uri":    fmt.Sprintf("spotify:album:%s", albumID),
+			"locale": "",
+			"offset": 0,
+			"limit":  1,
+		},
+		"operationName": "getAlbum",
+		"extensions": map[string]interface{}{
+			"persistedQuery": map[string]interface{}{
+				"version":    1,
+				"sha256Hash": "b9bfabef66ed756e5e13f68a942deb60bd4125ec1f1be8cc42769dc0259b4b10",
+			},
+		},
+	}
+
+	data, err := client.Query(payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to query album: %w", err)
+	}
+
+	albumData := getMap(getMap(data, "data"), "albumUnion")
+	tracksData := getMap(albumData, "tracksV2")
+
+	if tc, ok := tracksData["totalCount"].(float64); ok {
+		return int(tc), nil
+	} else if tc, ok := tracksData["totalCount"].(int); ok {
+		return tc, nil
+	}
+
+	return 0, nil
+}
+
+func GetAlbumTrackCount(ctx context.Context, albumID string) (int, error) {
+	client := NewSpotifyMetadataClient()
+	return client.GetAlbumTrackCount(ctx, albumID)
 }
